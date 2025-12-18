@@ -198,11 +198,22 @@ zipalign -f -v 4 "$repack_apk" "$repack_aligned_apk" > /dev/null
 
 # 8. Sign
 echo "Signing..."
+# Use env overrides if provided; default to repo keystore
+KEYSTORE="${KS_FILE:-key.keystore}"
+KS_PASS="${KS_PASS:-mypassword123}"
+KEY_PASS="${KEY_PASS:-mypassword123}"
+KS_ALIAS="${KS_ALIAS:-key}"
+
+if [ ! -f "$KEYSTORE" ]; then
+    echo "Error: Keystore '$KEYSTORE' not found. Place key.keystore in repo root or set KS_FILE."
+    exit 1
+fi
+
 apksigner sign \
---ks key.keystore \
---ks-pass pass:mypassword123 \
---key-pass pass:mypassword123 \
---ks-key-alias key \
+--ks "$KEYSTORE" \
+--ks-pass pass:"$KS_PASS" \
+--key-pass pass:"$KEY_PASS" \
+--ks-key-alias "$KS_ALIAS" \
 "$repack_aligned_apk"
 
 echo "--------------------------------------------------"
