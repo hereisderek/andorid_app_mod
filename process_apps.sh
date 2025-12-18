@@ -44,8 +44,7 @@ if [ ! -f "$APK_KEEP_PATH" ]; then
         
         if [ "$OS" == "Darwin" ] && [ "$ARCH" == "arm64" ] && [ -f "$LOCAL_FALLBACK" ]; then
             echo "Using local fallback: $LOCAL_FALLBACK"
-            cp "$LOCAL_FALLBACK" "$APK_KEEP_PATH"
-            chmod +x "$APK_KEEP_PATH"
+            APK_KEEP_PATH="$LOCAL_FALLBACK"
         else
             echo "Error: apkeep download failed."
             exit 1

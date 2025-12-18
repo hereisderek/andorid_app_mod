@@ -20,11 +20,12 @@ if [ -f "$so_file" ]; then
     if perl -0777 -ne 'exit 0 if /\x28\x46\x41\x46\xff\xf7\xce\xec\x00\x28\x08\xbf/; exit 1' "$so_file"; then
         echo "  Target bytes found. Patching..."
         perl -i -pe 's/\x28\x46\x41\x46\xff\xf7\xce\xec\x00\x28\x08\xbf/\x28\x46\x41\x46\x00\xbf\x00\xbf\x00\x28\x08\xbf/g' "$so_file"
-        if [ $? -eq 0 ]; then
-             echo "  Patch applied successfully."
+        # Verify that the patched bytes are now present
+        if [ $? -eq 0 ] && perl -0777 -ne 'exit 0 if /\x28\x46\x41\x46\x00\xbf\x00\xbf\x00\x28\x08\xbf/; exit 1' "$so_file"; then
+            echo "  Patch applied successfully."
         else
-             echo "  Error: Failed to write to file."
-             EXIT_CODE=1
+            echo "  Error: Patch command did not update target bytes."
+            EXIT_CODE=1
         fi
     # Check for already patched bytes
     # Sequence: 28 46 41 46 00 bf 00 bf 00 28 08 bf

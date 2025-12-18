@@ -183,7 +183,8 @@ apply_optional_patches() {
             read -p "Enter new Bundle ID: " new_bid
             if [ -n "$new_bid" ]; then
                 echo "Changing Bundle ID to $new_bid..."
-                perl -i -pe "s/package=\"[^\"]*\"/package=\"$new_bid\"/" "$manifest_file"
+                NEW_BID="$new_bid" perl -i -pe 's/package="[^"]*"/"package=\"$ENV{NEW_BID}\""/e' "$manifest_file"
+                # perl -i -pe "s/package=\"[^\"]*\"/package=\"$new_bid\"/" "$manifest_file"
             fi
         fi
         
