@@ -9,6 +9,7 @@ yarn-error.log
 
 # Secrets & Keys
 *.keystore
+!/key.keystore
 *.jks
 *.p12
 *.pem
