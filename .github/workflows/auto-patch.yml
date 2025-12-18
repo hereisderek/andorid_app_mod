@@ -77,17 +77,13 @@ jobs:
           mkdir -p tools
           wget https://github.com/REAndroid/APKEditor/releases/download/V1.4.6/APKEditor-1.4.6.jar -O tools/APKEditor.jar
 
-      - name: Setup Keystore
-        if: steps.check.outputs.update_available == 'true'
-        run: |
-          mkdir -p ~/.android
-          # Generate a debug keystore if one doesn't exist (or use a secret if you have a real one)
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+      # Keystore is provided in the repo (key.keystore). No generation.
 
       - name: Run Rebuild Script
         if: steps.check.outputs.update_available == 'true'
         env:
           APK_EDITOR_JAR: ${{ github.workspace }}/tools/APKEditor.jar
+          KS_FILE: ${{ github.workspace }}/key.keystore
         run: |
           chmod +x rebuild.sh
           ./rebuild.sh "${{ steps.download.outputs.file_path }}"
