@@ -1,8 +1,9 @@
 {
   "apps": [
     {
-      "id": "com.okampro.oksmart",
-      "current_version": "3.0.18"
+      "id": "com.okampro.oksmart"
+    }, {
+      "id": "com.huiyun.care.viewerpro.googleplay"
     }
   ]
 }
