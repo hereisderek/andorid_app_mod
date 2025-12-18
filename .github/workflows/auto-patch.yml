@@ -41,7 +41,7 @@ jobs:
         run: |
           # Download a pre-built binary of apkeep to save time
           # Using a specific version for stability
-          wget https://github.com/EFForg/apkeep/releases/download/0.15.0/apkeep-x86_64-unknown-linux-gnu -O apkeep
+          wget https://github.com/EFForg/apkeep/releases/download/0.18.0/apkeep-x86_64-unknown-linux-gnu -O apkeep
           chmod +x apkeep
           sudo mv apkeep /usr/local/bin/
 
