@@ -17,6 +17,12 @@ fi
 
 APK_EDITOR="java -jar $APK_EDITOR_JAR"
 PATCHES_DIR="$(dirname "$0")/patches"
+
+# Ensure all patch scripts are executable
+if [ -d "$PATCHES_DIR" ]; then
+    chmod -R +x "$PATCHES_DIR"
+fi
+
 INTERACTIVE=true
 TOTAL_PATCHES=0
 SUCCESSFUL_PATCHES=0
