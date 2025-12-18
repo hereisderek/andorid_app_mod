@@ -92,34 +92,14 @@ jobs:
         if: steps.check.outputs.update_available == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.check.outputs.version }}
+          tag_name: ${{ steps.check.outputs.app_id }}-v${{ steps.check.outputs.version }}
           name: ${{ steps.check.outputs.app_id }} v${{ steps.check.outputs.version }}
           files: |
-            *_repack_aligned.apk
+            downloads/*_repack_aligned.apk
           body: |
             Auto-generated patch for ${{ steps.check.outputs.app_id }} version ${{ steps.check.outputs.version }}.
             
             Changes:
             - Ads Disabled
 
-      - name: Update apps.json
-        if: steps.check.outputs.update_available == 'true'
-        run: |
-          # Update the version in apps.json using jq
-          # We install jq first just in case
-          sudo apt-get install -y jq
-          
-          APP_ID="${{ steps.check.outputs.app_id }}"
-          NEW_VERSION="${{ steps.check.outputs.version }}"
-          
-          # Update the specific app's current_version
-          jq --arg id "$APP_ID" --arg ver "$NEW_VERSION" \
-            '(.apps[] | select(.id == $id)).current_version = $ver' \
-            apps.json > apps.json.tmp && mv apps.json.tmp apps.json
-            
-          # Commit and push
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add apps.json
-          git commit -m "Update $APP_ID to $NEW_VERSION"
-          git push
+      # apps.json update step removed; releases are now the source of truth
