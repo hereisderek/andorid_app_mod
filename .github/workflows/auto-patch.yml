@@ -6,11 +6,11 @@ on:
   workflow_dispatch: # Allow manual trigger
 
 jobs:
-  check-and-patch:
+  check:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Needed to push releases and commit apps.json
-
+    outputs:
+      update_available: ${{ steps.check.outputs.update_available }}
+      updates_json: ${{ steps.check.outputs.updates_json }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -28,98 +28,73 @@ jobs:
         id: check
         working-directory: ./automation
         run: node check_updates.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  patch:
+    needs: check
+    if: needs.check.outputs.update_available == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.check.outputs.updates_json) }}
+      fail-fast: false
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Setup Java (for APK Editor & Signing)
-        if: steps.check.outputs.update_available == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Install apkeep (APK Downloader)
-        if: steps.check.outputs.update_available == 'true'
         run: |
-          # Download a pre-built binary of apkeep to save time
-          # Using a specific version for stability
           wget https://github.com/EFForg/apkeep/releases/download/0.18.0/apkeep-x86_64-unknown-linux-gnu -O apkeep
           chmod +x apkeep
           sudo mv apkeep /usr/local/bin/
 
       - name: Download APK/XAPK
-        if: steps.check.outputs.update_available == 'true'
         id: download
         run: |
-          APP_ID="${{ steps.check.outputs.app_id }}"
-          VERSION="${{ steps.check.outputs.version }}"
+          APP_ID="${{ matrix.app_id }}"
+          VERSION="${{ matrix.version }}"
           echo "Downloading $APP_ID version $VERSION..."
-          
           mkdir -p downloads
-          
-          # Try downloading from APKPure (supports XAPK)
-          # Note: apkeep might require an email/pass for Google Play, but works without for other sources
-          # We try to download specifically from a source that provides XAPKs if possible, or let apkeep decide.
-          # -a specifies the app ID.
-          
           apkeep -a "$APP_ID" ./downloads
-          
-          # Find the downloaded file
           DOWNLOADED_FILE=$(find ./downloads -type f -name "*$APP_ID*" | head -n 1)
           echo "Downloaded: $DOWNLOADED_FILE"
           echo "file_path=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
 
       - name: Setup Build Tools
-        if: steps.check.outputs.update_available == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y zipalign apksigner
-          
-          # Download APKEditor.jar
           mkdir -p tools
           wget https://github.com/REAndroid/APKEditor/releases/download/V1.4.6/APKEditor-1.4.6.jar -O tools/APKEditor.jar
 
-      # Keystore is provided in the repo (key.keystore). No generation.
-
       - name: Run Rebuild Script
-        if: steps.check.outputs.update_available == 'true'
         env:
           APK_EDITOR_JAR: ${{ github.workspace }}/tools/APKEditor.jar
           KS_FILE: ${{ github.workspace }}/key.keystore
+          APP_ID: ${{ matrix.app_id }}
+          VERSION: ${{ matrix.version }}
         run: |
           chmod +x rebuild.sh
           ./rebuild.sh "${{ steps.download.outputs.file_path }}"
 
       - name: Create Release
-        if: steps.check.outputs.update_available == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.check.outputs.version }}
-          name: ${{ steps.check.outputs.app_id }} v${{ steps.check.outputs.version }}
+          tag_name: ${{ matrix.app_id }}-v${{ matrix.version }}
+          name: ${{ matrix.app_id }} v${{ matrix.version }}
           files: |
-            *_repack_aligned.apk
+            downloads/${{ matrix.app_id }}-v${{ matrix.version }}.apk
           body: |
-            Auto-generated patch for ${{ steps.check.outputs.app_id }} version ${{ steps.check.outputs.version }}.
+            Auto-generated patch for ${{ matrix.app_id }} version ${{ matrix.version }}.
             
             Changes:
             - Ads Disabled
-
-      - name: Update apps.json
-        if: steps.check.outputs.update_available == 'true'
-        run: |
-          # Update the version in apps.json using jq
-          # We install jq first just in case
-          sudo apt-get install -y jq
-          
-          APP_ID="${{ steps.check.outputs.app_id }}"
-          NEW_VERSION="${{ steps.check.outputs.version }}"
-          
-          # Update the specific app's current_version
-          jq --arg id "$APP_ID" --arg ver "$NEW_VERSION" \
-            '(.apps[] | select(.id == $id)).current_version = $ver' \
-            apps.json > apps.json.tmp && mv apps.json.tmp apps.json
-            
-          # Commit and push
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add apps.json
-          git commit -m "Update $APP_ID to $NEW_VERSION"
-          git push
