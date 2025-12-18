@@ -191,7 +191,12 @@ fi
 rm -rf "$decompile_dir" 
 
 # 7. Zipalign
-repack_aligned_apk="${workdir}/${filename_no_ext}_repack_aligned.apk"
+if [[ -n "$APP_ID" && -n "$VERSION" ]]; then
+    repack_aligned_apk="${workdir}/${APP_ID}-v${VERSION}.apk"
+else
+    repack_aligned_apk="${workdir}/${filename_no_ext}_repack_aligned.apk"
+fi
+
 echo "Zipaligning to $repack_aligned_apk..."
 [[ -f "$repack_aligned_apk" ]] && rm -f "$repack_aligned_apk"
 zipalign -f -v 4 "$repack_apk" "$repack_aligned_apk" > /dev/null

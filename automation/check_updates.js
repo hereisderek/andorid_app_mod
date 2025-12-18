@@ -73,50 +73,54 @@ async function checkUpdates() {
 
     const appsConfig = JSON.parse(fs.readFileSync(APPS_FILE, 'utf8'));
     const apps = appsConfig.apps || [];
-    let updatesFound = false;
+  const updates = [];
 
-    const repoEnv = process.env.GITHUB_REPOSITORY || 'hereisderek/andorid_app_mod';
-    const [owner, repo] = repoEnv.split('/');
-    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+  const repoEnv = process.env.GITHUB_REPOSITORY || 'hereisderek/andorid_app_mod';
+  const [owner, repo] = repoEnv.split('/');
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
 
-    for (const app of apps) {
-        try {
-            const appId = app.id || app.app_id || app.package || app.packageName;
-            if (!appId) {
-                console.warn('Skipping entry without app id:', app);
-                continue;
-            }
-            console.log(`Checking ${appId}...`);
+  for (const app of apps) {
+    try {
+      const appId = app.id || app.app_id || app.package || app.packageName;
+      if (!appId) {
+        console.warn('Skipping entry without app id:', app);
+        continue;
+      }
+      console.log(`Checking ${appId}...`);
 
-            const details = await gplay.app({ appId, country: 'us' });
-            const latestStoreVersion = normalizeVersion(details.version);
+      const details = await gplay.app({ appId, country: 'us' });
+      const latestStoreVersion = normalizeVersion(details.version);
 
-            const latestProcessedVersion = await getLatestProcessedVersion({ owner, repo, token, appId });
+      const latestProcessedVersion = await getLatestProcessedVersion({ owner, repo, token, appId });
 
-            console.log(`  Processed: ${latestProcessedVersion || '(none)'}`);
-            console.log(`  Store:     ${latestStoreVersion || '(unknown)'}`);
+      console.log(`  Processed: ${latestProcessedVersion || '(none)'}`);
+      console.log(`  Store:     ${latestStoreVersion || '(unknown)'}`);
 
-            if (latestStoreVersion && cmpVersions(latestStoreVersion, latestProcessedVersion || '0.0.0') > 0) {
-                console.log('  -> Update available!');
-                if (process.env.GITHUB_OUTPUT) {
-                    fs.appendFileSync(process.env.GITHUB_OUTPUT, `update_available=true\n`);
-                    fs.appendFileSync(process.env.GITHUB_OUTPUT, `app_id=${appId}\n`);
-                    fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${latestStoreVersion}\n`);
-                }
-                updatesFound = true;
-                break; // handle one per run
-            }
-        } catch (e) {
-            console.error(`Error checking ${app.id || app.app_id}:`, e.message);
-        }
+      if (latestStoreVersion && cmpVersions(latestStoreVersion, latestProcessedVersion || '0.0.0') > 0) {
+        console.log('  -> Update available!');
+        updates.push({
+          app_id: appId,
+          version: latestStoreVersion
+        });
+      }
+    } catch (e) {
+      console.error(`Error checking ${app.id || app.app_id}:`, e.message);
     }
+  }
 
-    if (!updatesFound) {
-        console.log('No updates found.');
-        if (process.env.GITHUB_OUTPUT) {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `update_available=false\n`);
-        }
+  if (updates.length > 0) {
+    console.log(`Found ${updates.length} updates.`);
+    if (process.env.GITHUB_OUTPUT) {
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `update_available=true\n`);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `updates_json=${JSON.stringify({ include: updates })}\n`);
     }
+  } else {
+    console.log('No updates found.');
+    if (process.env.GITHUB_OUTPUT) {
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `update_available=false\n`);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `updates_json={"include":[]}\n`);
+    }
+  }
 }
 
 checkUpdates();
