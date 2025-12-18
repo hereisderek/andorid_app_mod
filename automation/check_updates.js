@@ -1,4 +1,4 @@
-const gplay = require('google-play-scraper');
+const gplay = require('google-play-scraper').default || require('google-play-scraper');
 const fs = require('fs');
 const path = require('path');
 
@@ -21,7 +21,7 @@ async function checkUpdates() {
     for (const app of apps) {
         try {
             console.log(`Checking ${app.id}...`);
-            const details = await gplay.app({ appId: app.id });
+            const details = await gplay.app({ appId: app.id, country: 'us' });
             const latestVersion = details.version;
             
             console.log(`  Current: ${app.current_version}`);
