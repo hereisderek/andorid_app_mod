@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Patched Apps Manager</string>
+    <string name="app_list_title">Available Apps</string>
+    <string name="settings_title">Settings</string>
+    <string name="install">Install</string>
+    <string name="update">Update</string>
+    <string name="up_to_date">Up to Date</string>
+    <string name="not_installed">Not Installed</string>
+    <string name="downloading">Downloading…</string>
+    <string name="signature_mismatch_title">Signature Mismatch</string>
+    <string name="signature_mismatch_message">The app you\'re trying to install has a different signature than the installed version. You must uninstall the current version first.</string>
+    <string name="uninstall_and_install">Uninstall &amp; Install</string>
+    <string name="cancel">Cancel</string>
+    <string name="repository_url">Repository URL</string>
+    <string name="reset_to_default">Reset to Default</string>
+    <string name="refresh">Refresh</string>
+    <string name="error_loading">Error loading apps</string>
+    <string name="retry">Retry</string>
+</resources>
