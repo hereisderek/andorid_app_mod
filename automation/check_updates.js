@@ -100,7 +100,9 @@ async function checkUpdates() {
         console.log('  -> Update available!');
         updates.push({
           app_id: appId,
-          version: latestStoreVersion
+          version: latestStoreVersion,
+          pin_version_code: app.pin_versionCode || '',
+          pin_version_name: app.pin_versionName || ''
         });
       }
     } catch (e) {

@@ -1,13 +1,11 @@
-name: Android App Auto-Patcher
+name: Manual Android App Parcher (GH Runner)
 
 on:
-  schedule:
-    - cron: '0 0 * * *' # Run daily at midnight
   workflow_dispatch: # Allow manual trigger
 
 jobs:
   check:
-    runs-on: runner1
+    runs-on: ubuntu-latest
     outputs:
       update_available: ${{ steps.check.outputs.update_available }}
       updates_json: ${{ steps.check.outputs.updates_json }}
@@ -34,7 +32,7 @@ jobs:
   patch:
     needs: check
     if: needs.check.outputs.update_available == 'true'
-    runs-on: runner1
+    runs-on: ubuntu-latest
     strategy:
       matrix: ${{ fromJson(needs.check.outputs.updates_json) }}
       fail-fast: false
@@ -88,12 +86,12 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ matrix.app_id }}-v${{ matrix.version }}
-          name: ${{ matrix.app_id }} v${{ matrix.version }}
+          tag_name: ${{ matrix.app_id }}-v${{ matrix.version }}-manual
+          name: ${{ matrix.app_id }} v${{ matrix.version }} (Manual)
           files: |
             output/${{ matrix.app_id }}-v${{ matrix.version }}_repack_aligned.apk
           body: |
-            Auto-generated patch for ${{ matrix.app_id }} version ${{ matrix.version }}.
+            Manually triggered patch for ${{ matrix.app_id }} version ${{ matrix.version }}.
             
             Changes:
             - Ads Disabled
