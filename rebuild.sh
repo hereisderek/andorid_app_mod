@@ -295,16 +295,9 @@ version_name=$(get_version_name "$manifest_file")
 # Use detected or provided app info
 final_app_id="${APP_ID:-$bundle_id}"
 
-# Priority: PIN_VERSION_NAME > PROVIDED VERSION > DETECTED version_name
-# if [ -n "$PIN_VERSION_NAME" ]; then
-#     final_version="$PIN_VERSION_NAME"
-# else
-#     final_version="${VERSION:-$version_name}"
-# fi
-
 # Priority: PROVIDED VERSION from command line (@version) > DETECTED version_name from APK
 # Note: PIN_VERSION_NAME from apps.json only affects the manifest, not the output naming.
-final_version="$PIN_VERSION_NAME"
+final_version="${VERSION:-$version_name}"
 
 echo "Detected Bundle ID: $bundle_id (VersionCode: $version_code, VersionName: $version_name)"
 [ -n "$PIN_VERSION_NAME" ] && echo "Pinning VersionName to: $PIN_VERSION_NAME"
