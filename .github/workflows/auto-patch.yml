@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    runs-on: runner1
+    runs-on: self-hosted
     outputs:
       update_available: ${{ steps.check.outputs.update_available }}
       updates_json: ${{ steps.check.outputs.updates_json }}
