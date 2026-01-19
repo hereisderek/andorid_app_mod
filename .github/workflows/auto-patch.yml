@@ -34,7 +34,7 @@ jobs:
   patch:
     needs: check
     if: needs.check.outputs.update_available == 'true'
-    runs-on: runner1
+    runs-on: self-hosted
     strategy:
       matrix: ${{ fromJson(needs.check.outputs.updates_json) }}
       fail-fast: false
@@ -69,7 +69,7 @@ jobs:
           echo "Downloading $APP_ID version $VERSION..."
           mkdir -p downloads
           apkeep -a "$APP_ID@$VERSION" ./downloads
-          DOWNLOADED_FILE=$(find ./downloads -type f -name "*$APP_ID*" | head -n 1)
+          DOWNLOADED_FILE=$(find ./downloads -type f -name "*${APP_ID}*" | head -n 1)
           echo "Downloaded: $DOWNLOADED_FILE"
           echo "file_path=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
 
