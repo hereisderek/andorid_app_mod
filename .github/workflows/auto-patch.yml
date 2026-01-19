@@ -51,15 +51,45 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install apkeep & Tools
+      - name: Install Tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y zipalign apksigner jq
-          wget https://github.com/EFForg/apkeep/releases/download/0.18.0/apkeep-x86_64-unknown-linux-gnu -O apkeep
-          chmod +x apkeep
-          sudo mv apkeep /usr/local/bin/
-          mkdir -p tools
-          wget https://github.com/REAndroid/APKEditor/releases/download/V1.4.6/APKEditor-1.4.6.jar -O tools/APKEditor.jar
+          mkdir -p bin tools
+          
+          # 1. Attempt to install system dependencies via apt
+          echo "Attempting to install dependencies via apt..."
+          if sudo apt-get update -qq; then
+            sudo apt-get install -y -qq zipalign apksigner jq || echo "Some apt packages failed to install"
+          else
+            echo "Apt update failed, will use fallback for missing tools"
+          fi
+
+          # 2. Download apkeep (typically not in apt repos)
+          if ! command -v apkeep &> /dev/null && [ ! -f bin/apkeep ]; then
+            echo "Downloading apkeep..."
+            wget -q https://github.com/EFForg/apkeep/releases/download/0.18.0/apkeep-x86_64-unknown-linux-gnu -O bin/apkeep
+            chmod +x bin/apkeep
+          fi
+          
+          # 3. Download APKEditor
+          if [ ! -f tools/APKEditor.jar ]; then
+            echo "Downloading APKEditor..."
+            wget -q https://github.com/REAndroid/APKEditor/releases/download/V1.4.6/APKEditor-1.4.6.jar -O tools/APKEditor.jar
+          fi
+          
+          # 4. Fallback for jq if apt failed
+          if ! command -v jq &> /dev/null && [ ! -f bin/jq ]; then
+            echo "jq not found, downloading binary..."
+            wget -q https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux64 -O bin/jq
+            chmod +x bin/jq
+          fi
+
+          # 5. Verify zipalign and apksigner
+          if ! command -v zipalign &> /dev/null || ! command -v apksigner &> /dev/null; then
+            echo "::error:: zipalign or apksigner not found. Rebuild will fail."
+          fi
+
+          # Add local bin to PATH for subsequent steps
+          echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
       - name: Download APK/XAPK
         id: download
