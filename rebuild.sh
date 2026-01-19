@@ -103,6 +103,20 @@ get_bundle_id() {
     fi
 }
 
+get_version_code() {
+    local manifest_file="$1"
+    if [ -f "$manifest_file" ]; then
+        grep -o 'versionCode="[0-9]*"' "$manifest_file" | cut -d'"' -f2
+    fi
+}
+
+get_version_name() {
+    local manifest_file="$1"
+    if [ -f "$manifest_file" ]; then
+        grep -o 'versionName="[^"]*"' "$manifest_file" | cut -d'"' -f2
+    fi
+}
+
 # Map of Bundle ID to list of patches
 get_patches_for_app() {
     local id="$1"
@@ -123,8 +137,9 @@ get_patches_for_app() {
 apply_patches() {
     local bundle_id="$1"
     local target_dir="$2"
+    local version_code="$3"
     
-    echo "Applying patches for Bundle ID: $bundle_id"
+    echo "Applying patches for Bundle ID: $bundle_id (VersionCode: $version_code)"
     
     # 1. Apply Common Patches (Applied to ALL apps)
     echo "--- Common Patches ---"
@@ -135,7 +150,7 @@ apply_patches() {
                 if [ -f "$patch_file" ]; then
                     echo "Applying common patch: $(basename "$patch_file")"
                     ((TOTAL_PATCHES++))
-                    "$patch_file" "$target_dir"
+                    "$patch_file" "$target_dir" "$version_code"
                     if [ $? -eq 0 ]; then
                         ((SUCCESSFUL_PATCHES++))
                     else
@@ -156,7 +171,7 @@ apply_patches() {
         if [ -f "$patch_file" ]; then
             echo "Applying patch: $patch"
             ((TOTAL_PATCHES++))
-            "$patch_file" "$target_dir"
+            "$patch_file" "$target_dir" "$version_code"
             if [ $? -eq 0 ]; then
                 ((SUCCESSFUL_PATCHES++))
             else
@@ -259,43 +274,80 @@ else
 fi
 
 # 3. Decompile
-# Structure: workdir/filename_no_ext/decompile_xml
-project_dir="${workdir}/${filename_no_ext}"
-decompile_dir="${project_dir}/decompile_xml"
+# Decompile first to a generic temp dir to detect info
+temp_decompile_dir="${workdir}/temp_decompile_${filename_no_ext}"
+rm -rf "$temp_decompile_dir"
 
-mkdir -p "$project_dir"
-
-# Remove previous decompile dir to ensure clean state
-if [ -d "$decompile_dir" ]; then
-    echo "Removing previous decompile directory..."
-    rm -rf "$decompile_dir"
-fi
-
-echo "Decompiling to $decompile_dir..."
-$APK_EDITOR d -i "$input_file" -o "$decompile_dir"
+echo "Decompiling for analysis: $input_file"
+$APK_EDITOR d -i "$input_file" -o "$temp_decompile_dir"
 
 if [ $? -ne 0 ]; then
-    echo "Error: Decompilation failed."
+    echo "Error: Initial decompilation failed."
     exit 1
 fi
+
+# Detect Info
+manifest_file="${temp_decompile_dir}/AndroidManifest.xml"
+bundle_id=$(get_bundle_id "$manifest_file")
+version_code=$(get_version_code "$manifest_file")
+version_name=$(get_version_name "$manifest_file")
+
+# Use detected or provided app info
+final_app_id="${APP_ID:-$bundle_id}"
+
+# Priority: PIN_VERSION_NAME > PROVIDED VERSION > DETECTED version_name
+# if [ -n "$PIN_VERSION_NAME" ]; then
+#     final_version="$PIN_VERSION_NAME"
+# else
+#     final_version="${VERSION:-$version_name}"
+# fi
+
+# Priority: PROVIDED VERSION from command line (@version) > DETECTED version_name from APK
+# Note: PIN_VERSION_NAME from apps.json only affects the manifest, not the output naming.
+final_version="$PIN_VERSION_NAME"
+
+echo "Detected Bundle ID: $bundle_id (VersionCode: $version_code, VersionName: $version_name)"
+[ -n "$PIN_VERSION_NAME" ] && echo "Pinning VersionName to: $PIN_VERSION_NAME"
+[ -n "$PIN_VERSION_CODE" ] && echo "Pinning VersionCode to: $PIN_VERSION_CODE"
+
+# Re-establish project directory with version suffix if possible
+if [ -n "$final_version" ]; then
+    project_dir="${workdir}/${final_app_id}-v${final_version}"
+else
+    project_dir="${workdir}/${final_app_id}"
+fi
+decompile_dir="${project_dir}/decompile_xml"
+
+# Ensure clean state for move
+mkdir -p "$project_dir"
+rm -rf "$decompile_dir"
+
+echo "Moving decompiled files to: $decompile_dir"
+mv "$temp_decompile_dir" "$decompile_dir"
 
 # 4. Apply Patches
 echo "Applying patches..."
 
-# Detect Bundle ID
-manifest_file="${decompile_dir}/AndroidManifest.xml"
-bundle_id=$(get_bundle_id "$manifest_file")
-echo "Detected Bundle ID: $bundle_id"
+# Set environment variables for patches
+export PIN_VERSION_CODE="$PIN_VERSION_CODE"
+export PIN_VERSION_NAME="$PIN_VERSION_NAME"
 
-apply_patches "$bundle_id" "$decompile_dir"
+apply_patches "$bundle_id" "$decompile_dir" "$version_code"
 apply_optional_patches "$decompile_dir"
+
+if [ "$INTERACTIVE" = true ]; then
+    echo ""
+    echo "Decompilation and automatic patching complete."
+    echo "You can now make manual modifications in: $decompile_dir"
+    read -p "Press [Enter] to continue with rebuilding..."
+fi
 
 # Clean up macOS metadata files from decompiled output
 echo "Cleaning decompiled files..."
 find "$project_dir" -name "._*" -delete
 
 # 5. Build
-repack_apk="${workdir}/${filename_no_ext}_repack.apk"
+repack_apk="${project_dir}/${final_app_id}_repack.apk"
 [[ -f "$repack_apk" ]] && rm -f "$repack_apk"
 echo "Building to $repack_apk..."
 $APK_EDITOR b -i "$decompile_dir" -o "$repack_apk"
@@ -305,14 +357,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-rm -rf "$decompile_dir" 
-
 # 6. Zipalign
-if [[ -n "$APP_ID" && -n "$VERSION" ]]; then
-    repack_aligned_apk="${workdir}/${APP_ID}-v${VERSION}.apk"
-else
-    repack_aligned_apk="${workdir}/${filename_no_ext}_repack_aligned.apk"
-fi
+repack_aligned_apk="${workdir}/${final_app_id}-v${final_version}_repack_aligned.apk"
 
 echo "Zipaligning to $repack_aligned_apk..."
 [[ -f "$repack_aligned_apk" ]] && rm -f "$repack_aligned_apk"
@@ -336,6 +382,11 @@ apksigner sign --ks "$KEYSTORE" --ks-pass pass:"$KS_PASS" --key-pass pass:"$KEY_
 echo "--------------------------------------------------"
 echo "Success! Output file: $repack_aligned_apk"
 echo "--------------------------------------------------"
+echo "Details:"
+echo "  Bundle ID:       $bundle_id"
+echo "  Original Ver:    $version_name ($version_code)"
+[ -n "$PIN_VERSION_NAME" ] && echo "  Pinned VerName:  $PIN_VERSION_NAME"
+[ -n "$PIN_VERSION_CODE" ] && echo "  Pinned VerCode:  $PIN_VERSION_CODE"
 echo "Patch Summary:"
 echo "  Total Patches Attempted: $TOTAL_PATCHES"
 echo "  Successful Patches:      $SUCCESSFUL_PATCHES"
@@ -343,3 +394,6 @@ echo "--------------------------------------------------"
 
 # cleanup
 [[ -f "$repack_apk" ]] && rm -f "$repack_apk"
+# Keep decompile_dir for reference/manual work if desirable, but user usually wants cleanup
+# For now, we clean it up if it's not a temp one we moved
+# rm -rf "$decompile_dir" 

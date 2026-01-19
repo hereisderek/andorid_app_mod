@@ -1,42 +1,91 @@
 #!/usr/bin/env bash
 
-target_dir="$1"
+TARGET_DIR="$1"
+VERSION_CODE="$2"
 EXIT_CODE=0
 
-if [ -z "$target_dir" ]; then
-    echo "Error: com.okampro.oksmart.sh requires a directory argument"
+if [ -z "$TARGET_DIR" ]; then
+    echo "Error: $(basename "$0") requires a directory argument"
     exit 1
 fi
 
-echo "Applying patches for com.okampro.oksmart..."
+echo "Applying patches for com.okampro.oksmart (Version: ${VERSION_CODE:-unknown})..."
 
-# Patch libOKSMARTJIAMI.so
-so_file="${target_dir}/root/lib/armeabi-v7a/libOKSMARTJIAMI.so"
-if [ -f "$so_file" ]; then
-    echo "Checking $so_file..."
-    
-    # Check for original bytes
-    # Sequence: 28 46 41 46 ff f7 ce ec 00 28 08 bf
-    if perl -0777 -ne 'exit 0 if /\x28\x46\x41\x46\xff\xf7\xce\xec\x00\x28\x08\xbf/; exit 1' "$so_file"; then
-        echo "  Target bytes found. Patching..."
-        perl -i -pe 's/\x28\x46\x41\x46\xff\xf7\xce\xec\x00\x28\x08\xbf/\x28\x46\x41\x46\x00\xbf\x00\xbf\x00\x28\x08\xbf/g' "$so_file"
-        # Verify that the patched bytes are now present
-        if [ $? -eq 0 ] && perl -0777 -ne 'exit 0 if /\x28\x46\x41\x46\x00\xbf\x00\xbf\x00\x28\x08\xbf/; exit 1' "$so_file"; then
-            echo "  Patch applied successfully."
-        else
-            echo "  Error: Patch command did not update target bytes."
-            EXIT_CODE=1
-        fi
-    # Check for already patched bytes
-    # Sequence: 28 46 41 46 00 bf 00 bf 00 28 08 bf
-    elif perl -0777 -ne 'exit 0 if /\x28\x46\x41\x46\x00\xbf\x00\xbf\x00\x28\x08\xbf/; exit 1' "$so_file"; then
-        echo "  Target bytes already patched. Skipping."
-    else
-        echo "  Error: Target bytes not found in $so_file."
-        EXIT_CODE=1
-    fi
+# --- Helper Functions ---
+# Load shared utilities
+UTILS_SH="$(dirname "$0")/util/utils.sh"
+if [ -f "$UTILS_SH" ]; then
+    source "$UTILS_SH"
 else
-    echo "Warning: $so_file not found."
+    echo "Error: Shared utilities not found at $UTILS_SH"
+    exit 1
+fi
+
+# --- Version Specific Patches ---
+
+# Previous known version patch
+patch_v1() {
+    local so_file="${TARGET_DIR}/root/lib/armeabi-v7a/libOKSMARTJIAMI.so"
+    local res=0
+    
+    # Existing SO patch
+    apply_hex_patch "libOKSMARTJIAMI (v1)" "$so_file" \
+        "28 46 41 46 ff f7 ce ec 00 28 08 bf" \
+        "28 46 41 46 00 bf 00 bf 00 28 08 bf" || res=1
+    return $res
+}
+
+patch_remove() {
+    local so_file="${TARGET_DIR}/root/lib/armeabi-v7a/libOKSMARTJIAMI.so"
+    local res=0
+    # AppCrypto patches
+    echo "  Applying AppCrypto bypasses..."
+    patch_smali_return_input "com/vstarcam/AppCrypto" "decrypt" || res=1
+    patch_smali_return_input "com/vstarcam/AppCrypto" "decryptOld" || res=1
+    patch_smali_return_input "com/vstarcam/AppCrypto" "deviceKey" || res=1
+    patch_smali_return_input "com/vstarcam/AppCrypto" "encrypt" || res=1
+    
+    return $res
+}
+
+# --- Main Logic ---
+
+# 1. Try version-specific patches if version is known
+MATCHED=false
+if [ -n "$VERSION_CODE" ]; then
+    case "$VERSION_CODE" in
+        "51"|"50") # 51 is v3.0.13
+            patch_v1 && MATCHED=true
+            ;;
+
+        "52") # 51 is v3.0.13
+            patch_v1 && MATCHED=true
+            ;;
+        # Add more mappings as they are discovered
+    esac
+fi
+
+# 2. If no version match OR version-specific patch failed, try all known patches
+if [ "$MATCHED" = false ]; then
+    echo "  No version-specific match. Trying all available patches..."
+    
+    # Try v1
+    if patch_v1; then
+        echo "  Successfully applied v1 patch."
+        MATCHED=true
+    fi
+
+    if patch_remove; then
+        echo "  Successfully applied removal patches."
+        MATCHED=true
+    fi
+    
+    # Try more here as they are added
+    # if [ "$MATCHED" = false ] && patch_v2; then MATCHED=true; fi
+fi
+
+if [ "$MATCHED" = false ]; then
+    echo "  Error: No applicable patches found for com.okampro.oksmart."
     EXIT_CODE=1
 fi
 

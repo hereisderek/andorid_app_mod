@@ -12,13 +12,14 @@ This project provides an automated system for downloading, decompiling, patching
 │   ├── APKEditor.jar            # Auto-downloaded APK decompiler/compiler
 │   └── apkeep-aarch64-apple-darwin  # Fallback for macOS ARM64
 ├── patches/                      # Patch scripts directory
-│   ├── common/                  # Applied to ALL apps
+│   ├── common/                  # Applied to ALL apps (e.g., pin-versions.sh)
 │   ├── google-ads-removal.sh    # Generic reusable patch
 │   └── com.okampro.oksmart.sh   # App-specific patch
-├── output/                       # Generated APKs (gitignored)
-├── rebuild.sh                    # Main patching script
-├── process_apps.sh              # Batch processing script
-└── apps.json                     # App configuration for CI/CD
+├── output/                       # Generated APKs and project folders
+│   └── com.id-vX.Y/             # Project folder with version suffix
+├── rebuild.sh                    # Main patching script (Merge -> Decompile -> Patch -> Build)
+├── process_apps.sh              # Download and batch processing script
+└── apps.json                     # App configuration and version pinning
 
 ```
 
@@ -66,22 +67,24 @@ get_patches_for_app() {
 
 All patch scripts must:
 1. Be executable (`chmod +x patches/yourpatch.sh`)
-2. Accept a directory path as first argument
-3. Return exit code 0 on success, non-zero on failure
+2. Accept a directory path as the first argument (`$1`)
+3. Accept an optional version code as the second argument (`$2`)
+4. Return exit code 0 on success, non-zero on failure
 
 Example template:
 
 ```bash
 #!/usr/bin/env bash
 
-target_dir="$1"
+TARGET_DIR="$1"
+VERSION_CODE="$2"
 
-if [ -z "$target_dir" ]; then
+if [ -z "$TARGET_DIR" ]; then
     echo "Error: patch requires a directory argument"
     exit 1
 fi
 
-echo "Applying my custom patch..."
+echo "Applying patch for version ${VERSION_CODE:-unknown}..."
 
 # Your patching logic here
 # ...
@@ -91,13 +94,46 @@ exit 0
 
 ## Usage Guide
 
-### Option 1: Single APK Processing
+### Option 1: Single APK Processing (`rebuild.sh`)
 
 ```bash
-# Interactive mode (prompts for optional patches)
+# Interactive mode (pauses for manual changes in decompile_xml/)
 ./rebuild.sh path/to/app.apk
 
-# Non-interactive mode (for automation)
+# Non-interactive mode (skips pause)
+./rebuild.sh --non-interactive path/to/app.apk
+```
+
+### Option 2: Automated Download and Process (`process_apps.sh`)
+
+```bash
+# Process an app using latest available version
+./process_apps.sh com.okampro.oksmart
+
+# Process a specific version
+./process_apps.sh com.okampro.oksmart@3.0.13
+
+# Batch process multiple apps non-interactively
+./process_apps.sh -n com.okampro.oksmart com.another.app
+```
+
+## Version Pinning
+
+You can force a specific `versionCode` or `versionName` by modifying `apps.json`:
+
+```json
+{
+  "apps": [
+    {
+      "id": "com.okampro.oksmart",
+      "pin_versionCode": "64",
+      "pin_versionName": "3.0.13"
+    }
+  ]
+}
+```
+
+This is handled by `patches/common/pin-versions.sh` and is useful when you need to bypass version checks or spoof a specific release internally.
 ./rebuild.sh --non-interactive path/to/app.apk
 
 # Specify output directory

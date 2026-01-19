@@ -52,17 +52,60 @@ if [ ! -f "$APK_KEEP_PATH" ]; then
     fi
 fi
 
-# Check if arguments are provided
-if [ $# -eq 0 ]; then
-    echo "Usage: $0 <app_id_1> [app_id_2] ..."
-    echo "Example: $0 com.okampro.oksmart com.example.app"
+# Usage function
+usage() {
+    echo "Usage: $0 [options] <app_id[@version]> [app_id[@version] ...]"
+    echo ""
+    echo "Options:"
+    echo "  -n, --non-interactive  Run in non-interactive mode (default is interactive)"
+    echo ""
+    echo "Example: $0 com.okampro.oksmart@3.0.13"
     exit 1
+}
+
+# Parse flags
+REBUILD_FLAGS=""
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -n|--non-interactive)
+      REBUILD_FLAGS="--non-interactive"
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+set -- "${POSITIONAL_ARGS[@]}"
+
+# Check if arguments are provided
+if [ ${#POSITIONAL_ARGS[@]} -eq 0 ]; then
+    usage
 fi
 
 # Iterate through provided App IDs
-for APP_ID in "$@"; do
+for APP_SPEC in "${POSITIONAL_ARGS[@]}"; do
+    # Handle version name if provided (format: app_id@version)
+    if [[ "$APP_SPEC" == *"@"* ]]; then
+        APP_ID="${APP_SPEC%@*}"
+        VERSION_NAME="${APP_SPEC#*@}"
+    else
+        APP_ID="$APP_SPEC"
+        VERSION_NAME=""
+    fi
+
     echo "=================================================="
-    echo "Processing App: $APP_ID"
+    if [ -n "$VERSION_NAME" ]; then
+        echo "Processing App: $APP_ID (Version: $VERSION_NAME)"
+    else
+        echo "Processing App: $APP_ID"
+    fi
     echo "=================================================="
 
     # Create a temp download dir for this app
@@ -71,7 +114,7 @@ for APP_ID in "$@"; do
     mkdir -p "$TEMP_DOWNLOAD_DIR"
 
     echo "Downloading APK..."
-    "$APK_KEEP_PATH" -a "$APP_ID" "$TEMP_DOWNLOAD_DIR"
+    "$APK_KEEP_PATH" -a "$APP_SPEC" "$TEMP_DOWNLOAD_DIR"
 
     # Find the downloaded file (APK or XAPK)
     DOWNLOADED_FILE=$(find "$TEMP_DOWNLOAD_DIR" -type f \( -name "*.apk" -o -name "*.xapk" -o -name "*.apkm" -o -name "*.apks" \) | head -n 1)
@@ -84,10 +127,20 @@ for APP_ID in "$@"; do
 
     echo "Downloaded: $DOWNLOADED_FILE"
 
+    # Load optional pins from apps.json
+    PIN_VC=""
+    PIN_VN=""
+    if [ -f "apps.json" ]; then
+        PIN_VC=$(jq -r ".apps[] | select(.id == \"$APP_ID\") | .pin_versionCode // empty" apps.json)
+        PIN_VN=$(jq -r ".apps[] | select(.id == \"$APP_ID\") | .pin_versionName // empty" apps.json)
+        
+        [ -n "$PIN_VC" ] && echo "Found versionCode pin in apps.json: $PIN_VC"
+        [ -n "$PIN_VN" ] && echo "Found versionName pin in apps.json: $PIN_VN"
+    fi
+
     # Run rebuild.sh
-    # We use --non-interactive mode for automation
     echo "Running patcher..."
-    ./rebuild.sh --non-interactive "$DOWNLOADED_FILE" "$OUTPUT_DIR"
+    APP_ID="$APP_ID" VERSION="$VERSION_NAME" PIN_VERSION_CODE="$PIN_VC" PIN_VERSION_NAME="$PIN_VN" ./rebuild.sh $REBUILD_FLAGS "$DOWNLOADED_FILE" "$OUTPUT_DIR"
 
     if [ $? -eq 0 ]; then
         echo "Successfully processed $APP_ID"

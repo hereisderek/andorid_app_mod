@@ -1,7 +1,9 @@
 {
   "apps": [
     {
-      "id": "com.okampro.oksmart"
+      "id": "com.okampro.oksmart",
+      "pin_versionCode": "65",
+      "#pin_versionName": "3.0.13"
     }, {
       "id": "com.huiyun.care.viewerpro.googleplay"
     }

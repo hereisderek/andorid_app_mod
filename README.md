@@ -5,10 +5,12 @@ This project provides automation tools to monitor, download, and patch the **OkS
 ## Features
 
 - **Automated Update Checking**: Monitors the Google Play Store for new versions of configured apps.
-- **Split APK Support**: Automatically merges XAPK, APKM, and APKS files into a single APK before processing.
-- **APK Rebuilding**: Tools to decompile, patch, and rebuild APK files.
-- **Ad Removal**: Automated scripts to strip Google Ads (`AdActivity`, `MobileAdsInitProvider`) and disable ad loading in Smali code (`AdView.loadAd`, `InterstitialAd.load`).
-- **Binary Patching**: Applies specific hex patches to `libOKSMARTJIAMI.so`.
+- **Split APK Support**: Automatically merges XAPK, APKM, and APKS files into a single APK.
+- **Version Pinning**: Force specific `versionCode` and `versionName` in `AndroidManifest.xml` via `apps.json`.
+- **Flexible Batch Processing**: Download, patch, and rebuild multiple apps, including specific versions via `@version` tags.
+- **Interactive Mode**: Pauses after decompilation and patching to allow for manual modifications.
+- **Ad Removal**: Automated scripts to strip Google Ads components and calls.
+- **Binary Patching**: Version-aware hex patches for native libraries.
 - **Signing & Alignment**: Automatically zipaligns and signs the modified APK.
 
 ## Project Structure
@@ -31,19 +33,37 @@ node check_updates.js
 
 ### Rebuilding & Patching
 
-The `rebuild.sh` script handles the modification of the APK file. It requires `APKEditor` (jar), `zipalign`, and `apksigner`.
+The `rebuild.sh` script handles individual APK files, while `process_apps.sh` handles automated downloads and batch processing.
 
+#### Single File (rebuild.sh)
 ```bash
-./rebuild.sh <path_to_input_apk> [output_directory]
+./rebuild.sh [options] <path_to_input_apk> [output_directory]
+
+Options:
+  -n, --non-interactive  Skip interactive prompts and the manual modification pause.
+```
+
+#### Batch Processing & Download (process_apps.sh)
+```bash
+./process_apps.sh [options] <app_id[@version]> [app_id[@version] ...]
+
+Example:
+# Download latest and run interactively
+./process_apps.sh com.okampro.oksmart
+
+# Download specific version and run non-interactively
+./process_apps.sh -n com.okampro.oksmart@3.0.13
 ```
 
 **Patches applied:**
-1.  **Ad Removal:**
+1.  **Common Patches:**
+    - **Version Pinning:** If configured in `apps.json`, forces specific version info in the manifest.
+2.  **Ad Removal:**
     - Removes `com.google.android.gms.ads.AdActivity` from `AndroidManifest.xml`.
     - Removes `com.google.android.gms.ads.MobileAdsInitProvider` from `AndroidManifest.xml`.
     - Patches Smali code to disable `loadAd` methods for both Banner and Interstitial ads.
-2.  **Binary Patch:**
-    - Modifies `lib/armeabi-v7a/libOKSMARTJIAMI.so` with a specific hex replacement.
+3.  **Binary Patch:**
+    - Modifies `lib/armeabi-v7a/libOKSMARTJIAMI.so` with version-aware hex replacements.
 
 ### Signing
 
@@ -68,18 +88,22 @@ keytool -genkey -v \
 
 ## Configuration
 
-Edit `apps.json` to track different apps or update the current version manually.
+Edit `apps.json` to track apps or define version pins.
 
 ```json
 {
   "apps": [
     {
       "id": "com.okampro.oksmart",
-      "current_version": "0.0.0"
+      "pin_versionCode": "64",
+      "pin_versionName": "3.0.13"
     }
   ]
 }
 ```
+
+- `pin_versionCode`: (Optional) The `versionCode` to force in `AndroidManifest.xml`.
+- `pin_versionName`: (Optional) The `versionName` to force in `AndroidManifest.xml`.
 
 ## Disclaimer
 
