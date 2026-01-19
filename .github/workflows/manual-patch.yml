@@ -43,57 +43,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Java (for APK Editor & Signing)
-        uses: actions/setup-java@v4
+      - name: Patch and Release
+        uses: ./.github/actions/patch-app
         with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Install apkeep & Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y zipalign apksigner jq
-          wget https://github.com/EFForg/apkeep/releases/download/0.18.0/apkeep-x86_64-unknown-linux-gnu -O apkeep
-          chmod +x apkeep
-          sudo mv apkeep /usr/local/bin/
-          mkdir -p tools
-          wget https://github.com/REAndroid/APKEditor/releases/download/V1.4.6/APKEditor-1.4.6.jar -O tools/APKEditor.jar
-
-      - name: Download APK/XAPK
-        id: download
-        run: |
-          APP_ID="${{ matrix.app_id }}"
-          VERSION="${{ matrix.version }}"
-          echo "Downloading $APP_ID version $VERSION..."
-          mkdir -p downloads
-          apkeep -a "$APP_ID@$VERSION" ./downloads
-          DOWNLOADED_FILE=$(find ./downloads -type f -name "*$APP_ID*" | head -n 1)
-          echo "Downloaded: $DOWNLOADED_FILE"
-          echo "file_path=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
-
-      - name: Run Rebuild Script
-        env:
-          APK_EDITOR_JAR: ${{ github.workspace }}/tools/APKEditor.jar
-          KS_FILE: ${{ github.workspace }}/key.keystore
-          APP_ID: ${{ matrix.app_id }}
-          VERSION: ${{ matrix.version }}
-          PIN_VERSION_CODE: ${{ matrix.pin_version_code }}
-          PIN_VERSION_NAME: ${{ matrix.pin_version_name }}
-        run: |
-          chmod +x rebuild.sh
-          ./rebuild.sh "${{ steps.download.outputs.file_path }}"
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
+          app_id: ${{ matrix.app_id }}
+          version: ${{ matrix.version }}
+          pin_version_code: ${{ matrix.pin_version_code }}
+          pin_version_name: ${{ matrix.pin_version_name }}
           tag_name: ${{ matrix.app_id }}-v${{ matrix.version }}-manual
-          name: ${{ matrix.app_id }} v${{ matrix.version }} (Manual)
-          files: |
-            output/${{ matrix.app_id }}-v${{ matrix.version }}_repack_aligned.apk
-          body: |
-            Manually triggered patch for ${{ matrix.app_id }} version ${{ matrix.version }}.
-            
-            Changes:
-            - Ads Disabled
-            ${{ matrix.pin_version_name != '' && format('- Pinned Version Name: {0}', matrix.pin_version_name) || '' }}
-            ${{ matrix.pin_version_code != '' && format('- Pinned Version Code: {0}', matrix.pin_version_code) || '' }}
+          release_name: ${{ matrix.app_id }} v${{ matrix.version }} (Manual)
+          is_manual: 'true'
+

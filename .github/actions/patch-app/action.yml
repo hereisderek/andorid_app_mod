@@ -1,0 +1,122 @@
+name: 'Patch and Release Android App'
+description: 'Downloads an APK, applies patches, rebuilds, signs, and creates a GitHub Release.'
+
+inputs:
+  app_id:
+    description: 'The package ID of the app'
+    required: true
+  version:
+    description: 'The version of the app to patch'
+    required: true
+  pin_version_code:
+    description: 'Optional version code to pin in manifest'
+    required: false
+    default: ''
+  pin_version_name:
+    description: 'Optional version name to pin in manifest'
+    required: false
+    default: ''
+  tag_name:
+    description: 'The tag name for the release'
+    required: true
+  release_name:
+    description: 'The name of the release'
+    required: true
+  is_manual:
+    description: 'Whether this is a manual run'
+    required: false
+    default: 'false'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Java (for APK Editor & Signing)
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Install Tools
+      shell: bash
+      run: |
+        mkdir -p bin tools output
+        
+        # 1. Attempt to install system dependencies via apt
+        echo "Attempting to install dependencies via apt..."
+        if command -v sudo &> /dev/null && sudo apt-get update -qq; then
+          sudo apt-get install -y -qq zipalign apksigner jq || echo "Some apt packages failed to install"
+        else
+          echo "Sudo or apt-get not available, or update failed. Will use fallback for missing tools"
+        fi
+
+        # 2. Download apkeep
+        if ! command -v apkeep &> /dev/null && [ ! -f bin/apkeep ]; then
+          echo "Downloading apkeep..."
+          wget -q https://github.com/EFForg/apkeep/releases/download/0.18.0/apkeep-x86_64-unknown-linux-gnu -O bin/apkeep
+          chmod +x bin/apkeep
+        fi
+        
+        # 3. Download APKEditor
+        if [ ! -f tools/APKEditor.jar ]; then
+          echo "Downloading APKEditor..."
+          wget -q https://github.com/REAndroid/APKEditor/releases/download/V1.4.6/APKEditor-1.4.6.jar -O tools/APKEditor.jar
+        fi
+        
+        # 4. Fallback for jq
+        if ! command -v jq &> /dev/null && [ ! -f bin/jq ]; then
+          echo "jq not found, downloading binary..."
+          wget -q https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux64 -O bin/jq
+          chmod +x bin/jq
+        fi
+
+        # 5. Verify zipalign and apksigner
+        if ! command -v zipalign &> /dev/null || ! command -v apksigner &> /dev/null; then
+          echo "::warning:: zipalign or apksigner not found. Rebuild might fail if they aren't in path."
+        fi
+
+        # Add local bin to PATH
+        echo "${{ github.action_path }}/../../bin" >> $GITHUB_PATH
+        # Also try workspace relative bin
+        echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
+    - name: Download APK/XAPK
+      id: download
+      shell: bash
+      run: |
+        APP_ID="${{ inputs.app_id }}"
+        VERSION="${{ inputs.version }}"
+        echo "Downloading $APP_ID version $VERSION..."
+        mkdir -p downloads
+        apkeep -a "$APP_ID@$VERSION" ./downloads
+        DOWNLOADED_FILE=$(find ./downloads -type f \( -name "*${APP_ID}*" -o -name "*.apk" -o -name "*.xapk" \) | head -n 1)
+        echo "Downloaded: $DOWNLOADED_FILE"
+        echo "file_path=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+
+    - name: Run Rebuild Script
+      shell: bash
+      env:
+        APK_EDITOR_JAR: ${{ github.workspace }}/tools/APKEditor.jar
+        KS_FILE: ${{ github.workspace }}/key.keystore
+        APP_ID: ${{ inputs.app_id }}
+        VERSION: ${{ inputs.version }}
+        PIN_VERSION_CODE: ${{ inputs.pin_version_code }}
+        PIN_VERSION_NAME: ${{ inputs.pin_version_name }}
+      run: |
+        chmod +x rebuild.sh
+        # Explicitly pass 'output' as the second argument to ensure it goes to the right place
+        ./rebuild.sh --non-interactive "${{ steps.download.outputs.file_path }}" "output"
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ inputs.tag_name }}
+        name: ${{ inputs.release_name }}
+        files: |
+          output/${{ inputs.app_id }}-v${{ inputs.version }}_repack_aligned.apk
+        body: |
+          Auto-generated patch for ${{ inputs.app_id }} version ${{ inputs.version }}.
+          ${{ inputs.is_manual == 'true' && '(Manually Triggered)' || '' }}
+          
+          Changes:
+          ${{ inputs.pin_version_name != '' && format('- Pinned Version Name: {0}', inputs.pin_version_name) || '' }}
+          ${{ inputs.pin_version_code != '' && format('- Pinned Version Code: {0}', inputs.pin_version_code) || '' }}
