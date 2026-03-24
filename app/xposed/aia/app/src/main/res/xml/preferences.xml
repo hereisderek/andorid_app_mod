@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:title="General">
+        <SwitchPreferenceCompat
+            app:key="enable_bypass"
+            app:title="Enable Bypasses"
+            app:summary="Enable security and root detection bypasses"
+            app:defaultValue="true" />
+        <SwitchPreferenceCompat
+            app:key="detailed_logging"
+            app:title="Detailed Logging"
+            app:summary="Print all read/injected values to logcat"
+            app:defaultValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Step Tracking">
+        <SwitchPreferenceCompat
+            app:key="enable_step_hook"
+            app:title="Enable Step Manipulation"
+            app:summary="Modify your daily steps"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="step_multiplier"
+            app:title="Step Multiplier"
+            app:summary="Multiply steps by this value (e.g., 2.0)"
+            app:defaultValue="1.0"
+            app:useSimpleSummaryProvider="true"
+            app:dependency="enable_step_hook" />
+            
+        <EditTextPreference
+            app:key="fixed_steps"
+            app:title="Fixed Steps"
+            app:summary="If set, always report this many steps"
+            app:defaultValue=""
+            app:useSimpleSummaryProvider="true"
+            app:dependency="enable_step_hook" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Workout &amp; Activity">
+        <SwitchPreferenceCompat
+            app:key="enable_workout_hook"
+            app:title="Enable Workout Manipulation"
+            app:summary="Modify workout duration/calories"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="workout_multiplier"
+            app:title="Workout Multiplier"
+            app:summary="Multiply duration/calories by this value"
+            app:defaultValue="1.0"
+            app:useSimpleSummaryProvider="true"
+            app:dependency="enable_workout_hook" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Heart Rate">
+        <SwitchPreferenceCompat
+            app:key="enable_hr_hook"
+            app:title="Enable Heart Rate Manipulation"
+            app:summary="Override your heart rate"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="fixed_hr"
+            app:title="Fixed Heart Rate"
+            app:summary="Set a specific heart rate (e.g., 75)"
+            app:defaultValue="72"
+            app:useSimpleSummaryProvider="true"
+            app:dependency="enable_hr_hook" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Sleep &amp; Mindfulness">
+        <SwitchPreferenceCompat
+            app:key="enable_sleep_hook"
+            app:title="Enable Sleep Manipulation"
+            app:summary="Modify sleep duration"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="fixed_sleep_minutes"
+            app:title="Fixed Sleep Minutes"
+            app:summary="Report this many minutes of sleep (e.g., 480 for 8h)"
+            app:defaultValue="480"
+            app:useSimpleSummaryProvider="true"
+            app:dependency="enable_sleep_hook" />
+
+        <SwitchPreferenceCompat
+            app:key="enable_mindful_hook"
+            app:title="Enable Mindfulness Manipulation"
+            app:summary="Modify mindful minutes"
+            app:defaultValue="false" />
+
+        <EditTextPreference
+            app:key="fixed_mindful_minutes"
+            app:title="Fixed Mindful Minutes"
+            app:summary="Report this many minutes of mindfulness"
+            app:defaultValue="20"
+            app:useSimpleSummaryProvider="true"
+            app:dependency="enable_mindful_hook" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

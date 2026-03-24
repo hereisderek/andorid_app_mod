@@ -94,27 +94,31 @@ exit 0
 
 ## Usage Guide
 
-### Option 1: Single APK Processing (`rebuild.sh`)
+### Option 1: Single Source Processing (`rebuild.sh`)
 
 ```bash
-# Interactive mode (pauses for manual changes in decompile_xml/)
+# Individual APK/XAPK
 ./rebuild.sh path/to/app.apk
 
-# Non-interactive mode (skips pause)
+# Directory of split APKs (merged automatically)
+./rebuild.sh path/to/split_apks_folder/
+
+# Non-interactive mode (skips manual modification pause)
 ./rebuild.sh --non-interactive path/to/app.apk
 ```
 
-### Option 2: Automated Download and Process (`process_apps.sh`)
+### Option 2: Batch Processing (`process_apps.sh`)
 
 ```bash
-# Process an app using latest available version
+# Process an app from Play Store using latest version
 ./process_apps.sh com.okampro.oksmart
 
-# Process a specific version
-./process_apps.sh com.okampro.oksmart@3.0.13
+# Process a local file or directory
+./process_apps.sh ./my_local_app.apk
+./process_apps.sh ./my_split_apks_folder/
 
-# Batch process multiple apps non-interactively
-./process_apps.sh -n com.okampro.oksmart com.another.app
+# Mix of sources non-interactively
+./process_apps.sh -n com.okampro.oksmart ./local_folder/
 ```
 
 ## Version Pinning

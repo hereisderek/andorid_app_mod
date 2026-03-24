@@ -18,6 +18,18 @@ fi
 APK_EDITOR="java -jar $APK_EDITOR_JAR"
 PATCHES_DIR="$(dirname "$0")/patches"
 
+# Check for required dependencies
+check_dependency() {
+    if ! command -v "$1" &> /dev/null; then
+        echo "Error: Required command '$1' not found. Please ensure it's installed and in your PATH."
+        exit 1
+    fi
+}
+
+check_dependency "java"
+# check_dependency "zipalign"
+# check_dependency "apksigner"
+
 # Ensure all patch scripts are executable
 if [ -d "$PATCHES_DIR" ]; then
     chmod -R +x "$PATCHES_DIR"
@@ -29,11 +41,12 @@ SUCCESSFUL_PATCHES=0
 
 # Usage function
 usage() {
-    echo "Usage: $0 [options] <input_file> [work_directory]"
+    echo "Usage: $0 [options] <input_file | input_directory> [work_directory]"
     echo ""
     echo "Arguments:"
     echo "  input_file      Path to the APK, XAPK, APKM, or APKS file."
-    echo "  work_directory  (Optional) Directory for output. Defaults to input file's directory."
+    echo "  input_directory Path to a directory containing split APKs (will be merged first)."
+    echo "  work_directory  (Optional) Directory for output. Defaults to input's parent directory."
     echo ""
     echo "Options:"
     echo "  -n, --non-interactive  Run in non-interactive mode (skip optional patches)."
@@ -84,9 +97,9 @@ if [ ! -d "$workdir" ]; then
     mkdir -p "$workdir" || { echo "Error: Could not create work directory '$workdir'"; exit 1; }
 fi
 
-# Check if file exists
-if [ ! -f "$input_file" ]; then
-    echo "Error: File '$input_file' not found."
+# Check if file or directory exists
+if [ ! -f "$input_file" ] && [ ! -d "$input_file" ]; then
+    echo "Error: Input '$input_file' not found (neither file nor directory)."
     exit 1
 fi
 
@@ -117,6 +130,30 @@ get_version_name() {
     fi
 }
 
+get_app_name() {
+    local target_dir="$1"
+    # Search for app_name or vid_name in strings.xml, preferring English/default values folder
+    # Priority: values-en-rUS, values-en-rGB, values-en, values
+    local strings_file=""
+    local name_key=""
+    for dir_suffix in "values-en-rUS" "values-en-rGB" "values-en" "values"; do
+        strings_file=$(find "$target_dir" -path "*/$dir_suffix/strings.xml" | head -n 1)
+        if [ -f "$strings_file" ]; then
+            if grep -q 'name="app_name"' "$strings_file"; then
+                name_key="app_name"
+                break
+            elif grep -q 'name="vid_name"' "$strings_file"; then
+                name_key="vid_name"
+                break
+            fi
+        fi
+    done
+
+    if [ -f "$strings_file" ]; then
+        grep "name=\"$name_key\"" "$strings_file" | sed -n 's/.*>\([^<]*\)<\/string>.*/\1/p' | head -n 1
+    fi
+}
+
 # Map of Bundle ID to list of patches
 get_patches_for_app() {
     local id="$1"
@@ -128,6 +165,9 @@ get_patches_for_app() {
         "com.huiyun.care.viewerpro.googleplay")
             echo "google-ads-removal.sh"
             ;;
+        "com.aia.gr.rn.nz.v2022.vitality")
+            echo "google-ads-removal.sh com.aia.gr.rn.nz.v2022.vitality.sh"
+            ;;
         *)
             echo ""
             ;;
@@ -138,6 +178,10 @@ apply_patches() {
     local bundle_id="$1"
     local target_dir="$2"
     local version_code="$3"
+    
+    # Export bundle_id so patch scripts can use it
+    # We use the final_app_id which includes any overrides or changes
+    export BUNDLE_ID="$final_app_id"
     
     echo "Applying patches for Bundle ID: $bundle_id (VersionCode: $version_code)"
     
@@ -186,40 +230,54 @@ apply_patches() {
 apply_optional_patches() {
     local target_dir="$1"
     local manifest_file="${target_dir}/AndroidManifest.xml"
-    local res_dir="${target_dir}/res"
     
-    if [ "$INTERACTIVE" = true ]; then
+    # 1. Handle Bundle ID
+    local current_bid=$(get_bundle_id "$manifest_file")
+    local new_bid="$OVERRIDE_BUNDLE_ID"
+    
+    if [ -z "$new_bid" ] && [ "$INTERACTIVE" = true ]; then
         echo ""
         echo "--- Optional Patches ---"
-        
-        # Change Bundle ID
         read -p "Do you want to change the Bundle ID? (y/N): " change_bid
         if [[ "$change_bid" =~ ^[Yy]$ ]]; then
-            read -p "Enter new Bundle ID: " new_bid
-            if [ -n "$new_bid" ]; then
-                echo "Changing Bundle ID to $new_bid..."
-                NEW_BID="$new_bid" perl -i -pe 's/package="[^"]*"/"package=\"$ENV{NEW_BID}\""/e' "$manifest_file"
-                # perl -i -pe "s/package=\"[^\"]*\"/package=\"$new_bid\"/" "$manifest_file"
-            fi
+            read -p "Enter new Bundle ID [$current_bid]: " input_bid
+            new_bid="${input_bid:-$current_bid}"
         fi
+    fi
+
+    if [ -n "$new_bid" ] && [ "$new_bid" != "$current_bid" ]; then
+        echo "Changing Bundle ID from $current_bid to $new_bid..."
+        # Update package attribute in AndroidManifest.xml
+        NEW_BID="$new_bid" perl -i -pe 's/package="[^"]*"/"package=\"$ENV{NEW_BID}\""/e' "$manifest_file"
         
-        # Change App Name
+        # Update all occurrences of the old package name in the entire decompile directory
+        echo "Updating package name references in decompile directory..."
+        find "$target_dir" \( -name "*.xml" -o -name "AndroidManifest.xml" \) -type f -exec \
+            sh -c 'OLD_BID="$1" NEW_BID="$2" perl -i -pe "s/\Q\$ENV{OLD_BID}\E/\$ENV{NEW_BID}/g" "$3"' \
+            -- "$current_bid" "$new_bid" {} \;
+    fi
+
+    # 2. Handle App Name
+    local current_name=$(get_app_name "$target_dir")
+    local new_name="$OVERRIDE_APP_NAME"
+
+    if [ -z "$new_name" ] && [ "$INTERACTIVE" = true ]; then
         read -p "Do you want to change the App Name? (y/N): " change_name
         if [[ "$change_name" =~ ^[Yy]$ ]]; then
-            read -p "Enter new App Name: " new_name
-            if [ -n "$new_name" ]; then
-                echo "Changing App Name to $new_name..."
-                # Search for app_name in strings.xml
-                find "$res_dir" -name "strings.xml" | while read -r strings_file; do
-                    if grep -q 'name="app_name"' "$strings_file"; then
-                        perl -i -pe "s/(<string name=\"app_name\">)[^<]*(<\/string>)/\$1$new_name\$2/" "$strings_file"
-                        echo "Updated $strings_file"
-                    fi
-                done
-            fi
+            read -p "Enter new App Name [$current_name]: " input_name
+            new_name="${input_name:-$current_name}"
         fi
-    else
-        echo "Skipping optional patches (Non-interactive mode)"
+    fi
+
+    if [ -n "$new_name" ] && [ "$new_name" != "$current_name" ]; then
+        echo "Changing App Name to $new_name..."
+        # Search for app_name or vid_name in all strings.xml files
+        find "$target_dir" -name "strings.xml" | while read -r strings_file; do
+            if grep -qE 'name="(app_name|vid_name)"' "$strings_file"; then
+                perl -i -pe "s/(<string name=\"(app_name|vid_name)\">)[^<]*<\/string>/\${1}$new_name<\/string>/" "$strings_file"
+                echo "Updated $strings_file"
+            fi
+        done
     fi
 }
 
@@ -231,17 +289,24 @@ filename_no_ext="${filename%.*}"
 extension="${filename##*.}"
 extension_upper=$(echo "$extension" | tr '[:lower:]' '[:upper:]')
 
-# 2. Check if extension is XAPK, APKM, APKS and run conversion
-if [[ "$extension_upper" == "XAPK" || "$extension_upper" == "APKM" || "$extension_upper" == "APKS" ]]; then
-    echo "Detected split APK archive ($extension). Preparing to merge..."
-    
-    # Create a temporary directory for cleaning
-    temp_extract_dir="${workdir}/temp_extract_${filename_no_ext}"
-    rm -rf "$temp_extract_dir"
-    mkdir -p "$temp_extract_dir"
-    
-    echo "Extracting to temporary directory for cleaning: $temp_extract_dir"
-    unzip -q "$input_file" -d "$temp_extract_dir"
+# 2. Check if extension is XAPK, APKM, APKS or if it's a directory, then run conversion
+if [[ "$extension_upper" == "XAPK" || "$extension_upper" == "APKM" || "$extension_upper" == "APKS" || -d "$input_file" ]]; then
+    if [ -d "$input_file" ]; then
+        echo "Detected directory input. Preparing to merge split APKs from: $input_file"
+        temp_extract_dir="$input_file"
+        # We don't want to delete the user's directory at the end if they provided it directly
+        provided_as_dir=true
+    else
+        echo "Detected split APK archive ($extension). Preparing to merge..."
+        # Create a temporary directory for cleaning
+        temp_extract_dir="${workdir}/temp_extract_${filename_no_ext}"
+        rm -rf "$temp_extract_dir"
+        mkdir -p "$temp_extract_dir"
+        
+        echo "Extracting to temporary directory for cleaning: $temp_extract_dir"
+        unzip -q "$input_file" -d "$temp_extract_dir"
+        provided_as_dir=false
+    fi
     
     echo "Cleaning macOS metadata (._ files and __MACOSX)..."
     find "$temp_extract_dir" -name "._*" -delete
@@ -256,12 +321,12 @@ if [[ "$extension_upper" == "XAPK" || "$extension_upper" == "APKM" || "$extensio
     # Check if merge was successful
     if [ $? -ne 0 ]; then
         echo "Error: Merge failed."
-        rm -rf "$temp_extract_dir"
+        [ "$provided_as_dir" = false ] && rm -rf "$temp_extract_dir"
         exit 1
     fi
     
-    # Cleanup temp file
-    rm -rf "$temp_extract_dir"
+    # Cleanup temp folder only if we created it
+    [ "$provided_as_dir" = false ] && rm -rf "$temp_extract_dir"
     
     # Update input_file to the merged APK for the subsequent steps
     input_file="$output_apk"
@@ -270,7 +335,7 @@ if [[ "$extension_upper" == "XAPK" || "$extension_upper" == "APKM" || "$extensio
     
     echo "Merge complete. New input: $input_file"
 else
-    echo "File is not a split APK archive, skipping merge."
+    echo "Input is not a split archive or directory, skipping merge."
 fi
 
 # 3. Decompile
@@ -321,6 +386,13 @@ mv "$temp_decompile_dir" "$decompile_dir"
 # 4. Apply Patches
 echo "Applying patches..."
 
+# Determine final app ID (detected or overridden)
+# Priority: 1. OVERRIDE_BUNDLE_ID, 2. bundle_id from manifest
+final_app_id="${OVERRIDE_BUNDLE_ID:-$bundle_id}"
+
+# Export bundle_id so patch scripts can use it
+export BUNDLE_ID="$final_app_id"
+
 # Set environment variables for patches
 export PIN_VERSION_CODE="$PIN_VERSION_CODE"
 export PIN_VERSION_NAME="$PIN_VERSION_NAME"
@@ -355,7 +427,10 @@ repack_aligned_apk="${workdir}/${final_app_id}-v${final_version}_repack_aligned.
 
 echo "Zipaligning to $repack_aligned_apk..."
 [[ -f "$repack_aligned_apk" ]] && rm -f "$repack_aligned_apk"
-zipalign -f -v 4 "$repack_apk" "$repack_aligned_apk" > /dev/null
+if ! zipalign -f -v 4 "$repack_apk" "$repack_aligned_apk" > /dev/null; then
+    echo "Error: zipalign failed."
+    exit 1
+fi
 
 # 7. Sign
 echo "Signing..."
@@ -370,7 +445,10 @@ if [ ! -f "$KEYSTORE" ]; then
     exit 1
 fi
 
-apksigner sign --ks "$KEYSTORE" --ks-pass pass:"$KS_PASS" --key-pass pass:"$KEY_PASS" --ks-key-alias "$KS_ALIAS" "$repack_aligned_apk"
+if ! apksigner sign --ks "$KEYSTORE" --ks-pass pass:"$KS_PASS" --key-pass pass:"$KEY_PASS" --ks-key-alias "$KS_ALIAS" "$repack_aligned_apk"; then
+    echo "Error: apksigner failed."
+    exit 1
+fi
 
 echo "--------------------------------------------------"
 echo "Success! Output file: $repack_aligned_apk"
